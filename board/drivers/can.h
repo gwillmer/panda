@@ -456,34 +456,6 @@ void can_rx(uint8_t can_number) {
           send_steer_enable_speed(&to_send_mod);
           can_send(&to_send_mod, 2, true);
          }
-        if (addr == 292) { //xxx
-          send_xxx_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
-        if (addr == 324) { //trans gear
-          send_trans_apa_signature(&to_send_mod);
-          can_send(&to_send_mod,2, true);
-        }
-        if (addr == 344) { //counter
-          send_count_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
-        if (addr == 368) { //shifter
-          send_shifter_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
-        if (addr == 514) { //whl spd
-          send_wspd_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
-        if (addr == 671) { //apa
-          send_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
-        if (addr == 820) { //shifter
-          send_rev_apa_signature(&to_send_mod);
-          can_send(&to_send_mod, 2, true);
-        }
         if (addr == 571) { //wheel buttons
           send_wheel_button_msg(&to_send_mod);
           can_send(&to_send_mod, 1, true);
