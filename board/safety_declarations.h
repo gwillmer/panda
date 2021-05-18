@@ -103,6 +103,7 @@ bool brake_pressed_prev = false;
 bool cruise_engaged_prev = false;
 float vehicle_speed = 0;
 bool vehicle_moving = false;
+bool gone_fast_yet = false;
 
 bool is_op_active = false;
 int lkas_torq = 1024;

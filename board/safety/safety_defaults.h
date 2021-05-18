@@ -35,15 +35,19 @@ static void send_steer_enable_speed(CAN_FIFOMailBox_TypeDef *to_fwd){
   int crc;
   int kph_factor = 128;
   int eps_cutoff_speed;
-  int lkas_enable_speed = 65 * kph_factor;
+  int lkas_enable_speed = 25 * kph_factor; //can probably be lower for 2018
   int veh_speed = GET_BYTE(to_fwd, 4) | GET_BYTE(to_fwd, 5) << 8;
   
   eps_cutoff_speed = veh_speed;
   
-  if (steer_type == 1) {
-    eps_cutoff_speed = lkas_enable_speed >> 8 | ((lkas_enable_speed << 8) & 0xFFFF);  //65kph with 128 factor
+  if (!gone_fast_yet && (veh_speed > lkas_enable_speed)) { 
+    gone_fast_yet = true; // send actual speed until needed for smooth transition. Resets after power cycle -- will be issue if fuse is moved to always on position
   }
   
+  if (gone_fast_yet && (steer_type == 1) && (veh_speed < lkas_enable_speed)) {
+    eps_cutoff_speed = lkas_enable_speed >> 8 | ((lkas_enable_speed << 8) & 0xFFFF);  //25kph with 128 factor
+  }
+
   to_fwd->RDHR &= 0x00FF0000;  //clear speed and Checksum
   to_fwd->RDHR |= eps_cutoff_speed;       //replace speed
   crc = fca_compute_checksum(to_fwd);
