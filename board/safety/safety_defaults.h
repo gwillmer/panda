@@ -62,7 +62,9 @@ static void send_acc_decel_msg(CAN_FIFOMailBox_TypeDef *to_fwd){
     to_fwd->RDHR &= 0x00FD0080; // keep the counter
 
     to_fwd->RDLR |= acc_stop << 5;
-    to_fwd->RDLR |= acc_go << 6;
+    to_fwd->RDLR |= acc_go_prep << 6;
+    to_fwd->RDLR |= acc_go_hold << 7;
+    to_fwd->RDLR |= ((acc_torq_cmd >> 8) | ((acc_torq_cmd << 8) & 0xFFFF));
     to_fwd->RDLR |= ((acc_decel_cmd >> 8) << 8) << 8;
     to_fwd->RDLR |= ((acc_available << 8) << 8) << 4;
     to_fwd->RDLR |= ((acc_enabled << 8) << 8) << 5;
@@ -166,7 +168,9 @@ int default_rx_hook(CAN_FIFOMailBox_TypeDef *to_push) {
 
   if ((addr == 502) && (bus_num == 0)) {
     acc_stop = (GET_BYTE(to_push, 0) >> 5) & 0x1;
-    acc_go = (GET_BYTE(to_push, 0) >> 6) & 0x1;
+    acc_go_prep = (GET_BYTE(to_push, 0) >> 6) & 0x1;
+    acc_go_hold = (GET_BYTE(to_push, 0) >> 7) & 0x1;
+    acc_torq_cmd = (GET_BYTE(to_push, 0) & 0xF) << 8 | GET_BYTE(to_push, 1);
     acc_available = (GET_BYTE(to_push, 2) >> 4) & 0x1;
     acc_enabled = (GET_BYTE(to_push, 2) >> 5) & 0x1;
     acc_decel_cmd = ((GET_BYTE(to_push, 2) & 0xF) << 8) | GET_BYTE(to_push, 3);

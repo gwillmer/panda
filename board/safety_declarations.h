@@ -119,8 +119,10 @@ int acc_text_msg = 0;
 bool acc_text_req = false;
 
 bool acc_stop = false;
-bool acc_go = false;
+bool acc_go_prep = false;
+bool acc_go_hold = false;
 int acc_decel_cmd = 4094;
+int acc_torq_cmd = 0;
 bool acc_available = false;
 bool acc_enabled = false;
 bool acc_brk_prep = false;
