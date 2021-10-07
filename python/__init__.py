@@ -8,17 +8,16 @@ import os
 import time
 import traceback
 import sys
-from .dfu import PandaDFU  # pylint: disable=import-error
+from .dfu import PandaDFU, MCU_TYPE_F2, MCU_TYPE_F4, MCU_TYPE_H7  # pylint: disable=import-error
 from .flash_release import flash_release  # noqa pylint: disable=import-error
 from .update import ensure_st_up_to_date  # noqa pylint: disable=import-error
 from .serial import PandaSerial  # noqa pylint: disable=import-error
 from .isotp import isotp_send, isotp_recv  # pylint: disable=import-error
-
+from .config import DEFAULT_FW_FN, DEFAULT_H7_FW_FN  # noqa pylint: disable=import-error
 
 __version__ = '0.0.9'
 
 BASEDIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../")
-DEFAULT_FW_FN = os.path.join(BASEDIR, "board", "obj", "panda.bin.signed")
 
 DEBUG = os.getenv("PANDADEBUG") is not None
 
@@ -138,15 +137,26 @@ class Panda(object):
   HW_TYPE_BLACK_PANDA = b'\x03'
   HW_TYPE_PEDAL = b'\x04'
   HW_TYPE_UNO = b'\x05'
+  HW_TYPE_DOS = b'\x06'
+  HW_TYPE_RED_PANDA = b'\x07'
+
+  F2_DEVICES = [HW_TYPE_PEDAL]
+  F4_DEVICES = [HW_TYPE_WHITE_PANDA, HW_TYPE_GREY_PANDA, HW_TYPE_BLACK_PANDA, HW_TYPE_UNO, HW_TYPE_DOS]
+  H7_DEVICES = [HW_TYPE_RED_PANDA]
 
   CLOCK_SOURCE_MODE_DISABLED = 0
   CLOCK_SOURCE_MODE_FREE_RUNNING = 1
   CLOCK_SOURCE_MODE_EXTERNAL_SYNC = 2
 
+  FLAG_HONDA_ALT_BRAKE = 1
+  FLAG_HONDA_BOSCH_LONG = 2
+  FLAG_HYUNDAI_LONG = 4
+
   def __init__(self, serial=None, claim=True):
     self._serial = serial
     self._handle = None
     self.connect(claim)
+    self._mcu_type = self.get_mcu_type()
 
   def close(self):
     self._handle.close()
@@ -177,7 +187,6 @@ class Panda(object):
                 self._serial = this_serial
                 print("opening device", self._serial, hex(device.getProductID()))
                 self.bootstub = device.getProductID() == 0xddee
-                self.legacy = (device.getbcdDevice() != 0x2300)
                 self._handle = device.open()
                 if sys.platform not in ["win32", "cygwin", "msys", "darwin"]:
                   self._handle.setAutoDetachKernelDriver(True)
@@ -222,7 +231,7 @@ class Panda(object):
       except Exception:
         print("reconnecting is taking %d seconds..." % (i + 1))
         try:
-          dfu = PandaDFU(PandaDFU.st_serial_to_dfu_serial(self._serial))
+          dfu = PandaDFU(PandaDFU.st_serial_to_dfu_serial(self._serial, self._mcu_type))
           dfu.recover()
         except Exception:
           pass
@@ -259,6 +268,8 @@ class Panda(object):
       pass
 
   def flash(self, fn=DEFAULT_FW_FN, code=None, reconnect=True):
+    if self._mcu_type == MCU_TYPE_H7 and fn == DEFAULT_FW_FN:
+      fn = DEFAULT_H7_FW_FN
     print("flash: main version is " + self.get_version())
     if not self.bootstub:
       self.reset(enter_bootstub=True)
@@ -288,7 +299,7 @@ class Panda(object):
       if timeout is not None and (time.time() - t_start) > timeout:
         return False
 
-    dfu = PandaDFU(PandaDFU.st_serial_to_dfu_serial(self._serial))
+    dfu = PandaDFU(PandaDFU.st_serial_to_dfu_serial(self._serial, self._mcu_type))
     dfu.recover()
 
     # reflash after recover
@@ -332,8 +343,8 @@ class Panda(object):
   # ******************* health *******************
 
   def health(self):
-    dat = self._handle.controlRead(Panda.REQUEST_IN, 0xd2, 0, 0, 43)
-    a = struct.unpack("<IIIIIIIIBBBBBBBHBB", dat)
+    dat = self._handle.controlRead(Panda.REQUEST_IN, 0xd2, 0, 0, 44)
+    a = struct.unpack("<IIIIIIIIBBBBBBBHBBB", dat)
     return {
       "uptime": a[0],
       "voltage": a[1],
@@ -352,7 +363,8 @@ class Panda(object):
       "safety_mode": a[14],
       "safety_param": a[15],
       "fault_status": a[16],
-      "power_save_enabled": a[17]
+      "power_save_enabled": a[17],
+      "heartbeat_lost": a[18],
     }
 
   # ******************* control *******************
@@ -389,11 +401,33 @@ class Panda(object):
   def is_black(self):
     return self.get_type() == Panda.HW_TYPE_BLACK_PANDA
 
+  def is_pedal(self):
+    return self.get_type() == Panda.HW_TYPE_PEDAL
+
   def is_uno(self):
     return self.get_type() == Panda.HW_TYPE_UNO
 
+  def is_dos(self):
+    return self.get_type() == Panda.HW_TYPE_DOS
+  
+  def is_red(self):
+    return self.get_type() == Panda.HW_TYPE_RED_PANDA
+
+  def get_mcu_type(self):
+    hw_type = self.get_type()
+    if hw_type in Panda.F2_DEVICES:
+      return MCU_TYPE_F2
+    elif hw_type in Panda.F4_DEVICES:
+      return MCU_TYPE_F4
+    elif hw_type in Panda.H7_DEVICES:
+      return MCU_TYPE_H7
+    return None
+
   def has_obd(self):
-    return (self.is_uno() or self.is_black())
+    return (self.is_uno() or self.is_dos() or self.is_black() or self.is_red())
+
+  def has_canfd(self):
+    return self._mcu_type in Panda.H7_DEVICES
 
   def get_serial(self):
     dat = self._handle.controlRead(Panda.REQUEST_IN, 0xd0, 0, 0, 0x20)
@@ -419,8 +453,11 @@ class Panda(object):
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xda, int(bootmode), 0, b'')
     time.sleep(0.2)
 
-  def set_safety_mode(self, mode=SAFETY_SILENT):
+  def set_safety_mode(self, mode=SAFETY_SILENT, disable_checks=True):
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xdc, mode, 0, b'')
+    if disable_checks:
+      self.set_heartbeat_disabled()
+      self.set_power_save(0)
 
   def set_can_forwarding(self, from_bus, to_bus):
     # TODO: This feature may not work correctly with saturated buses
@@ -447,6 +484,9 @@ class Panda(object):
 
   def set_can_speed_kbps(self, bus, speed):
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xde, bus, int(speed * 10), b'')
+
+  def set_can_data_speed_kbps(self, bus, speed):
+    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf9, bus, int(speed * 10), b'')
 
   def set_uart_baud(self, uart, rate):
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xe4, uart, int(rate / 300), b'')
@@ -617,6 +657,11 @@ class Panda(object):
 
   def send_heartbeat(self):
     self._handle.controlWrite(Panda.REQUEST_OUT, 0xf3, 0, 0, b'')
+
+  # disable heartbeat checks for use outside of openpilot
+  # sending a heartbeat will reenable the checks
+  def set_heartbeat_disabled(self):
+    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf8, 0, 0, b'')
 
   # ******************* RTC *******************
   def set_datetime(self, dt):

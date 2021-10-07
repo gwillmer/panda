@@ -30,19 +30,19 @@
 const CanMsg MAZDA_TX_MSGS[] = {{MAZDA_LKAS, 0, 8}, {MAZDA_CRZ_BTNS, 0, 8}};
 bool mazda_lkas_allowed = false;
 
-AddrCheckStruct mazda_rx_checks[] = {
-  {.msg = {{MAZDA_CRZ_CTRL,     0, 8, .expected_timestep = 20000U}}},
-  {.msg = {{MAZDA_CRZ_BTNS,     0, 8, .expected_timestep = 100000U}}},
-  {.msg = {{MAZDA_STEER_TORQUE, 0, 8, .expected_timestep = 12000U}}},
-  {.msg = {{MAZDA_ENGINE_DATA,  0, 8, .expected_timestep = 10000U}}},
-  {.msg = {{MAZDA_PEDALS,       0, 8, .expected_timestep = 20000U}}},
+AddrCheckStruct mazda_addr_checks[] = {
+  {.msg = {{MAZDA_CRZ_CTRL,     0, 8, .expected_timestep = 20000U}, { 0 }, { 0 }}},
+  {.msg = {{MAZDA_CRZ_BTNS,     0, 8, .expected_timestep = 100000U}, { 0 }, { 0 }}},
+  {.msg = {{MAZDA_STEER_TORQUE, 0, 8, .expected_timestep = 12000U}, { 0 }, { 0 }}},
+  {.msg = {{MAZDA_ENGINE_DATA,  0, 8, .expected_timestep = 10000U}, { 0 }, { 0 }}},
+  {.msg = {{MAZDA_PEDALS,       0, 8, .expected_timestep = 20000U}, { 0 }, { 0 }}},
 };
-const int MAZDA_RX_CHECKS_LEN = sizeof(mazda_rx_checks) / sizeof(mazda_rx_checks[0]);
+#define MAZDA_ADDR_CHECKS_LEN (sizeof(mazda_addr_checks) / sizeof(mazda_addr_checks[0]))
+addr_checks mazda_rx_checks = {mazda_addr_checks, MAZDA_ADDR_CHECKS_LEN};
 
 // track msgs coming from OP so that we know what CAM msgs to drop and what to forward
 static int mazda_rx_hook(CAN_FIFOMailBox_TypeDef *to_push) {
-  bool valid = addr_safety_check(to_push, mazda_rx_checks, MAZDA_RX_CHECKS_LEN,
-                            NULL, NULL, NULL);
+  bool valid = addr_safety_check(to_push, &mazda_rx_checks, NULL, NULL, NULL);
   if (valid && (GET_BUS(to_push) == MAZDA_MAIN)) {
     int addr = GET_ADDR(to_push);
 
@@ -120,7 +120,7 @@ static int mazda_tx_hook(CAN_FIFOMailBox_TypeDef *to_send) {
     if (addr == MAZDA_LKAS) {
       int desired_torque = (((GET_BYTE(to_send, 0) & 0x0f) << 8) | GET_BYTE(to_send, 1)) - MAZDA_MAX_STEER;
       bool violation = 0;
-      uint32_t ts = TIM2->CNT;
+      uint32_t ts = microsecond_timer_get();
 
       if (controls_allowed) {
 
@@ -183,11 +183,12 @@ static int mazda_fwd_hook(int bus, CAN_FIFOMailBox_TypeDef *to_fwd) {
   return bus_fwd;
 }
 
-static void mazda_init(int16_t param) {
+static const addr_checks* mazda_init(int16_t param) {
   UNUSED(param);
   controls_allowed = false;
   relay_malfunction_reset();
   mazda_lkas_allowed = false;
+  return &mazda_rx_checks;
 }
 
 const safety_hooks mazda_hooks = {
@@ -196,6 +197,4 @@ const safety_hooks mazda_hooks = {
   .tx = mazda_tx_hook,
   .tx_lin = nooutput_tx_lin_hook,
   .fwd = mazda_fwd_hook,
-  .addr_check = mazda_rx_checks,
-  .addr_check_len = sizeof(mazda_rx_checks) / sizeof(mazda_rx_checks[0]),
 };

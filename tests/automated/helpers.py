@@ -1,3 +1,4 @@
+import os
 import time
 import random
 import _thread
@@ -13,14 +14,17 @@ SPEED_NORMAL = 500
 SPEED_GMLAN = 33.3
 BUS_SPEEDS = [(0, SPEED_NORMAL), (1, SPEED_NORMAL), (2, SPEED_NORMAL), (3, SPEED_GMLAN)]
 TIMEOUT = 45
-GEN2_HW_TYPES = [Panda.HW_TYPE_BLACK_PANDA, Panda.HW_TYPE_UNO]
+H7_HW_TYPES = [Panda.HW_TYPE_RED_PANDA]
+GEN2_HW_TYPES = [Panda.HW_TYPE_BLACK_PANDA, Panda.HW_TYPE_UNO] + H7_HW_TYPES
 GPS_HW_TYPES = [Panda.HW_TYPE_GREY_PANDA, Panda.HW_TYPE_BLACK_PANDA, Panda.HW_TYPE_UNO]
+PEDAL_SERIAL = 'none'
+JUNGLE_SERIAL = os.getenv("PANDAS_JUNGLE")
 
 # Enable fault debug
 faulthandler.enable(all_threads=False)
 
 # Connect to Panda Jungle
-panda_jungle = PandaJungle()
+panda_jungle = PandaJungle(JUNGLE_SERIAL)
 
 # Find all panda's connected
 _panda_serials = None
@@ -41,10 +45,11 @@ test_all_types = parameterized([
     param(panda_type=Panda.HW_TYPE_WHITE_PANDA),
     param(panda_type=Panda.HW_TYPE_GREY_PANDA),
     param(panda_type=Panda.HW_TYPE_BLACK_PANDA),
-    param(panda_type=Panda.HW_TYPE_UNO)
+    param(panda_type=Panda.HW_TYPE_UNO),
+    param(panda_type=Panda.HW_TYPE_RED_PANDA)
   ])
 test_all_pandas = parameterized(
-    list(map(lambda x: x[0], _panda_serials))  # type: ignore
+    list(map(lambda x: x[0], filter(lambda x: x[0] != PEDAL_SERIAL, _panda_serials)))  # type: ignore
   )
 test_all_gen2_pandas = parameterized(
     list(map(lambda x: x[0], filter(lambda x: x[1] in GEN2_HW_TYPES, _panda_serials)))  # type: ignore
